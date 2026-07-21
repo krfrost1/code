@@ -63,11 +63,18 @@ In Intune, open the Patch My PC–created **Docker Desktop** app →
 **Dependencies** → add this WSL 2 app with **Automatically install** = Yes.
 Intune then guarantees WSL 2 (including its reboot) before Docker installs.
 
+## Alternative: publish it through Patch My PC Cloud
+
+Instead of hand-packaging and uploading to Intune, the same scripts can be
+published as a PMPC Cloud **Custom App** so the whole chain is managed in one
+console. See **[PMPC-Cloud-Setup.md](PMPC-Cloud-Setup.md)** for the field-by-field
+wizard walkthrough, dependency wiring, validation steps, and troubleshooting.
+
 ## Windows 365 note
 
-Nested virtualization is supported and enabled by default on 4 vCPU+ Cloud PC
-SKUs (your 4 vCPU / 16 GB SKU qualifies). The install script logs
-`HypervisorPresent` for troubleshooting but does not need to change anything.
+Nested virtualization is supported and enabled by default on 4 vCPU and larger
+Cloud PC SKUs, so no extra configuration is needed there. The install script
+logs `HypervisorPresent` for troubleshooting but does not change anything.
 
 ## Logs
 
