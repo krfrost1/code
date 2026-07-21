@@ -17,9 +17,19 @@ of the child app, so the wiring survives Docker updates with no rework.
 
 ## Prerequisites
 
+> **Script-only Custom Apps require a preview feature.** By default the Custom
+> Apps wizard only accepts an EXE or MSI as the primary installer file. Uploading
+> a `.ps1` on its own depends on the **Custom Scripted Apps App Catalog** public
+> preview feature, which is enabled at the *company* level in the PMPC Cloud
+> portal's preview-features settings and therefore needs an administrator who
+> owns the tenant. This is not a licensing tier issue — Custom Apps itself is
+> included in Enterprise Plus. If that toggle is unavailable, use the
+> [hybrid fallback](#fallback-hybrid-manual-intune-app--pmpc-dependency) below.
+
 - A PMPC Cloud subscription that includes **Custom Apps** (Enterprise Plus tier
   or higher; the base patching tier does not include it). Verify under
   **Settings → Subscription → License**.
+- The **Custom Scripted Apps App Catalog** preview feature enabled (see above).
 - The three scripts from this folder, downloaded to the machine you are
   browsing the PMPC Cloud portal from:
   - `Install-WSL2.ps1`
@@ -119,6 +129,42 @@ Creating a Custom App does not deploy it.
    tool, and add the WSL 2 custom app with **auto-install** enabled.
 
 From then on, PMPC copies the dependency forward to each new Docker version.
+
+## Fallback: hybrid (manual Intune app + PMPC dependency)
+
+Use this when the script-only preview feature is unavailable. It reaches the
+same end state — Docker never installs without WSL 2 — with the WSL 2 app
+listed in Intune rather than the PMPC portal.
+
+1. Package this folder as a Win32 app and upload it to Intune by hand, using
+   the settings in [README.md](README.md).
+2. In Intune, open the PMPC-published **Docker Desktop** app → **Dependencies**
+   → add the WSL 2 app with **Automatically install** = Yes.
+3. Leave the rest of the Docker lifecycle to PMPC.
+
+PMPC moves dependencies and assignments from the current version to the new one
+each time it publishes an update, so the dependency is expected to survive
+Docker updates untouched. The documentation is explicit about carrying
+dependencies forward but does not specifically call out parents that were
+created manually in Intune rather than by PMPC — worth confirming across the
+first update cycle after setting this up.
+
+What this costs: only the console the WSL 2 app is managed from. The enablement
+package is static — it has no version cadence for PMPC to automate — so the
+ongoing maintenance difference is close to zero.
+
+### Other ways to stay fully inside PMPC
+
+- **Ask the tenant owner to enable the preview feature.** One company-level
+  toggle, and the walkthrough above applies as written.
+- **Use the WSL MSI as the primary installer file**, with a **pre-install
+  script** (a generally available deployment tool) performing the DISM feature
+  enablement. Avoids preview features entirely, but changes the architecture and
+  needs testing to confirm the MSI installs cleanly while the features are still
+  pending a reboot.
+- **Wrap the install script as an EXE or MSI** (PS2EXE, WiX, or an MSI wrapper).
+  Preserves the script logic, but introduces an unsigned binary that can trip
+  antivirus or SmartScreen. Least preferred.
 
 ## Validation
 
