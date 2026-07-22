@@ -21,15 +21,15 @@
 
 .NOTES
     Exit codes:
-        0 = success (INCLUDING when a reboot is still pending - see below)
-        1 = failure
+        0    = success, prerequisites already active
+        3010 = success, reboot required before WSL 2 will function
+        1    = failure
 
-    This script always exits 0 on success, even when feature enablement has
-    left a reboot pending. A non-zero exit from a pre-install script can abort
-    the install that follows it, so the pending-reboot state is written to the
-    log instead. Configure the restart behaviour on the DEPLOYMENT, and confirm
-    the device restarts before Docker Desktop (or any other WSL 2 consumer) is
-    allowed to install. See PMPC-Cloud-Setup.md.
+    PMPC pre-install scripts treat BOTH 0 and 3010 as success, so returning
+    3010 is safe: it does not abort the install that follows, and it records
+    the pending-reboot state accurately. It does not by itself guarantee the
+    device restarts before a dependent app installs - configure the restart
+    behaviour on the DEPLOYMENT as well. See PMPC-Cloud-Setup.md.
 
     Log: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\Enable-WSL2-Features.log
 #>
@@ -88,6 +88,7 @@ try {
     if ($rebootRequired) {
         Write-Output 'REBOOT PENDING: features are enabled but will not be active until the device restarts.'
         Write-Output 'WSL 2 will not function, and dependent apps may fail, until that restart happens.'
+        $exitCode = 3010
     }
     else {
         Write-Output 'All prerequisites already active; no restart required.'

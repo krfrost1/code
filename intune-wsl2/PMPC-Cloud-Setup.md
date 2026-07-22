@@ -11,7 +11,7 @@ available features and lets PMPC keep the WSL package itself up to date.
 |---|---|---|
 | WSL package source | PMPC catalog, auto-updated | Downloaded by our script at install time |
 | Preview features needed | None | **Custom Scripted Apps App Catalog** (company-level toggle) |
-| Reboot handling | Configured on the deployment (verify) | Script returns `3010`; Intune holds the chain |
+| Reboot handling | Pre-install script returns `3010`; restart behaviour set on the deployment (verify) | App itself returns `3010`; Intune holds the chain |
 | Scripts used | `Enable-WSL2-Features.ps1` | `Install-WSL2.ps1`, `Uninstall-WSL2.ps1`, `Detect-WSL2.ps1` |
 
 If neither route is available, see the
@@ -55,19 +55,34 @@ Docker Desktop (PMPC catalog)
 
 1. **Deploy the catalog app.** In PMPC Cloud, create a deployment for
    **Windows Subsystem for Linux (MSI-x64)** and assign it to a test group.
-2. **Attach the pre-install script.** In that deployment's **Configurations**
-   tab, add the **Scripts** tool, choose **Pre-Install Script**, and import
-   `Enable-WSL2-Features.ps1`. Pre-install scripts are generally available — no
-   preview feature required. Note that PMPC does not sign customer-supplied
-   scripts; sign it yourself if your environment enforces signature checks.
-3. **Set the restart behaviour** on the deployment so the device restarts after
+2. **Check for an existing PMPC script first.** Some catalog apps ship with
+   vendor-authored scripts that run automatically. In the **Scripts** tool, use
+   the **`Customer Scripts | PMPC Scripts`** toggle to view them. You can read
+   and disable a PMPC script but **cannot edit** it (name, format, contents, and
+   arguments are locked). If PMPC's script already enables the optional
+   features, `Enable-WSL2-Features.ps1` is redundant — skip to step 4.
+3. **Attach the pre-install script.** Still in the **Scripts** tool, on the
+   **Customer Scripts** side, add a **Pre-Install Script** and import
+   `Enable-WSL2-Features.ps1`. Customer and PMPC scripts live in separate
+   buckets, so adding yours does not replace or conflict with theirs.
+   Pre-install scripts are generally available — no preview feature required.
+   PMPC does not sign customer-supplied scripts; sign it yourself if your
+   environment enforces signature checks.
+
+   Optionally enable **"Don't attempt software update if the pre-script returns
+   an exit code other than 0 or 3010"**. Both of this script's success codes are
+   in that set, so the install still proceeds normally — but a genuine failure
+   (exit `1`) will then stop the WSL install rather than letting it continue
+   over a broken prerequisite. Without the checkbox, installation proceeds
+   regardless of the script's exit code.
+4. **Set the restart behaviour** on the deployment so the device restarts after
    the features are enabled. See [The reboot problem](#the-reboot-problem) — do
    not skip this.
-4. **Let it deploy successfully.** A dependency parent must already exist and
+5. **Let it deploy successfully.** A dependency parent must already exist and
    have deployed successfully; apps in Failed, Retrying, or Processing states
    cannot be selected, and neither can apps whose only assignments are Uninstall
    or Update Only.
-5. **Wire the dependency.** Open the **Docker Desktop deployment →
+6. **Wire the dependency.** Open the **Docker Desktop deployment →
    Configurations tab → Dependencies** tool and add the WSL catalog app with
    **auto-install** enabled.
 
@@ -76,15 +91,17 @@ and updates the WSL package on its own schedule.
 
 ## The reboot problem
 
-This is the one place Route A is weaker than Route B, and it needs verifying in
-your environment.
-
 Enabling `VirtualMachinePlatform` requires a restart before WSL 2 actually
-works. `Enable-WSL2-Features.ps1` deliberately exits `0` even when a reboot is
-pending, because a non-zero exit from a pre-install script can abort the install
-that follows it. The consequence is that nothing automatically signals "reboot
-required" to Intune the way a `3010` return code does in Route B — so Docker
-could begin installing while WSL 2 is still inactive.
+works, so the ordering of that restart relative to the Docker install matters.
+
+`Enable-WSL2-Features.ps1` exits `3010` when it has left a reboot pending, and
+`0` when the prerequisites were already active. PMPC treats both as success for
+a pre-install script, so this is safe and does not abort the install behind it.
+
+What it does *not* do by itself is guarantee that the device restarts before a
+dependent app installs — the app's overall result still comes from the catalog
+MSI, not from the pre-install script. Verify this behaves as expected in your
+environment rather than assuming it.
 
 Mitigations, in order of preference:
 
@@ -202,7 +219,7 @@ scripts (Intune does not require signing unless you enable signature checks).
 
 Review and **Create**, then create a deployment for the app, assign it to a test
 group, and wire it as a dependency of Docker Desktop as described in
-[Route A step 5](#steps).
+[Route A step 6](#steps).
 
 ---
 
@@ -314,3 +331,11 @@ the latest release themselves.
 - Strictly, only `VirtualMachinePlatform` is required by the MSI-based WSL
   package; `Microsoft-Windows-Subsystem-Linux` is enabled as well for
   compatibility with older tooling and inbox WSL. Enabling both is harmless.
+- **x64 only.** Microsoft publishes both `wsl.<version>.x64.msi` and
+  `wsl.<version>.arm64.msi`, but PMPC's catalog entry is explicitly
+  `Windows Subsystem for Linux (MSI-x64)`, and `Install-WSL2.ps1` selects the
+  x64 asset. Windows 365 Cloud PCs are x64, so this is moot for that scenario,
+  and setting the app's architecture to 64-bit means ARM64 devices correctly
+  evaluate as "not applicable" rather than failing. Supporting ARM64 would mean
+  widening the script's asset filter and sourcing the package outside the PMPC
+  catalog.
