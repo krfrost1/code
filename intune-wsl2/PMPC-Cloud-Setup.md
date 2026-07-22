@@ -283,6 +283,68 @@ first update cycle after setting this up.
 
 ---
 
+# Assignment
+
+Applies to all routes above. Assign in the deployment's **Assignments** tab.
+
+## Only the child app needs assigning
+
+Assign **Docker Desktop**. The WSL app installs automatically as a dependency
+when Docker installs, so it does not need its own broad assignment — it only
+needs to exist as a successfully deployed deployment, and its assignment type
+must not be **Uninstall** or **Update Only**, either of which disqualifies it as
+a dependency parent.
+
+## User group or device group
+
+Both work. For most app types an **Available** assignment is only valid against
+user groups, but Win32 apps are the documented exception: per Microsoft, "Win32
+apps can be assigned to either user or device groups."
+
+Choose based on what the entitlement actually tracks:
+
+| Use a **user group** when | Use a **device group** when |
+|---|---|
+| Entitlement is per-person ("who may have Docker") | Entitlement is per-machine ("these dev machines get Docker") |
+| Seats are licensed per user — Docker Desktop requires a paid subscription for business use, so the group can mirror what you pay for | A defined set of machines is easier to enumerate than a set of people |
+| You want self-service via Company Portal for a known audience | You want the assignment to be self-limiting to correct hardware |
+
+**Recommended default:** a **user** security group with the **Available for
+enrolled devices** intent, so entitled users install on demand from Company
+Portal — plus a filter (below) to keep it off ineligible hardware.
+
+Use **Required** instead if every targeted device should get Docker
+unattended, with no user action.
+
+## Guard against ineligible hardware with a filter
+
+A user-group assignment follows the person to *every* device they own, including
+ones where this cannot work:
+
+- **Nested virtualization requires a 4 vCPU or larger Cloud PC.** Downsizing to
+  2 vCPU disables it, and GPU Cloud PCs do not support it at all.
+- **The WSL package is x64-only** (see [Notes](#notes)).
+
+Apply an **Intune filter** to the assignment to scope it to eligible devices —
+filters are available on Enterprise Plus and higher and are surfaced in PMPC's
+Assignments tab. Filter on device model to include only Cloud PCs at 4 vCPU or
+above; check the exact model string in the Intune admin center first, since Cloud
+PC models surface with their specification in the name and the format matters for
+the match.
+
+A device-group assignment scoped to eligible machines achieves the same guard
+without a filter.
+
+> Assignment **intent is evaluated before the filter**. Avoid targeting the same
+> app with conflicting intents across overlapping groups, or the filter may not
+> behave as expected.
+
+## Roll out in stages
+
+Assign to a test group first and validate the full chain (below) before widening.
+On Enterprise Plus and higher, **update rings** let you phase subsequent Docker
+updates through a canary group rather than releasing to everyone at once.
+
 # Validation
 
 Test on a genuinely clean device. On Windows 365, **reprovisioning a Cloud PC**
