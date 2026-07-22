@@ -26,6 +26,28 @@ installs the parent app first, which is the desired behaviour. PMPC Cloud also
 carries dependencies forward automatically each time it publishes a new version
 of the child app, so the wiring survives Docker updates with no rework.
 
+## Scope and assumptions
+
+**Windows only.** The dependency attaches to the *Windows* Docker Desktop
+deployment. Docker Desktop for macOS is a separate app with its own deployment,
+and Win32 app dependencies are a Windows-only construct, so a macOS deployment
+is unaffected by anything here.
+
+**Linux containers.** WSL 2 is Docker Desktop's default backend and is what
+Linux containers use. This guide assumes that case.
+
+**Windows containers are the exception.** They require the **Hyper-V** feature
+rather than WSL 2, so this dependency does not help those users — they need
+their own enablement path, subject to the same 4 vCPU nested-virtualization
+floor on Windows 365. WSL 2 installing alongside is harmless for them, just
+unused, so the dependency does not need to be scoped around them. Note also that
+per-user Docker installs support only the WSL 2 backend, while all-users installs
+(what a SYSTEM-context deployment produces) keep Hyper-V and Windows containers
+available.
+
+Scope *who* gets Docker through the assignment and filter, not through the
+dependency — see [Assignment](#assignment).
+
 ---
 
 # Route A — PMPC catalog app
