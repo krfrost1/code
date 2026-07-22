@@ -11,8 +11,9 @@ available features and lets PMPC keep the WSL package itself up to date.
 |---|---|---|
 | WSL package source | PMPC catalog, auto-updated | Downloaded by our script at install time |
 | Preview features needed | None | **Custom Scripted Apps App Catalog** (company-level toggle) |
-| Reboot handling | Pre-install script returns `3010`; restart behaviour set on the deployment (verify) | App itself returns `3010`; Intune holds the chain |
-| Scripts used | `Enable-WSL2-Features.ps1` | `Install-WSL2.ps1`, `Uninstall-WSL2.ps1`, `Detect-WSL2.ps1` |
+| Optional-feature enablement | Not covered — only needed if the image lacks them | Handled by the install script |
+| Reboot handling | Not applicable when features are pre-enabled; otherwise pre-install script returns `3010` | App itself returns `3010`; Intune holds the chain |
+| Scripts used | None, or `Enable-WSL2-Features.ps1` | `Install-WSL2.ps1`, `Uninstall-WSL2.ps1`, `Detect-WSL2.ps1` |
 
 If neither route is available, see the
 [hybrid fallback](#fallback-hybrid-manual-intune-app--pmpc-dependency).
@@ -27,7 +28,7 @@ of the child app, so the wiring survives Docker updates with no rework.
 
 ---
 
-# Route A — PMPC catalog app + pre-install script
+# Route A — PMPC catalog app
 
 ## What the catalog app does and does not cover
 
@@ -35,49 +36,72 @@ PMPC's catalog includes **`Windows Subsystem for Linux (MSI-x64)`** (added
 August 2024). It packages Microsoft's WSL MSI — the WSL 2 kernel, WSLg, and
 `wsl.exe` — and keeps it updated automatically.
 
-It does **not**:
+It does **not** enable the Windows optional features WSL 2 depends on
+(`VirtualMachinePlatform`, and `Microsoft-Windows-Subsystem-Linux` for inbox
+compatibility), because an MSI cannot enable a Windows feature. It also does not
+set the default WSL version to 2.
 
-- enable the `VirtualMachinePlatform` Windows optional feature, which WSL 2
-  requires and which cannot be enabled by an MSI; or
-- set the default WSL version to 2 (per PMPC's own guidance, this must be
-  handled separately).
-
-`Enable-WSL2-Features.ps1` in this folder closes exactly that gap and nothing
-more. Attaching it as a **pre-install script** produces:
+**Whether that matters depends on your image.** Windows 365 gallery images have
+been observed to ship with both features **already enabled**, in which case the
+catalog app alone is sufficient and no pre-install script is needed. Confirm
+before deciding — see [Step 1](#steps).
 
 ```
 Docker Desktop (PMPC catalog)
   └── depends on → Windows Subsystem for Linux (MSI-x64)   ← PMPC catalog, auto-updated
-                     └── pre-install script → optional features + default version 2
+                     └── pre-install script (only if the features are not already enabled)
 ```
 
 ## Steps
 
-1. **Deploy the catalog app.** In PMPC Cloud, create a deployment for
+1. **Check whether the features are already enabled on your image.** On a clean,
+   freshly provisioned device that has had no WSL tooling deployed to it:
+
+   ```powershell
+   Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform
+   Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux
+   ```
+
+   Both `Enabled` → skip steps 3 and 4 entirely; the catalog app is all you need.
+   Either one `Disabled` → keep the pre-install script.
+
+   Do not test this on a device that has already had `Install-WSL2.ps1` or an
+   equivalent run against it — that script enables the features itself, so the
+   result tells you nothing about the image. If such a device is all you have,
+   read the *pre-existing* state out of its log instead:
+
+   ```powershell
+   Select-String -Path 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\Install-WSL2.log' `
+                 -Pattern 'current state|Enabling feature'
+   ```
+
+2. **Deploy the catalog app.** In PMPC Cloud, create a deployment for
    **Windows Subsystem for Linux (MSI-x64)** and assign it to a test group.
-2. **Check for an existing PMPC script first.** Some catalog apps ship with
-   vendor-authored scripts that run automatically. In the **Scripts** tool, use
-   the **`Customer Scripts | PMPC Scripts`** toggle to view them. You can read
-   and disable a PMPC script but **cannot edit** it (name, format, contents, and
-   arguments are locked). If PMPC's script already enables the optional
-   features, `Enable-WSL2-Features.ps1` is redundant — skip to step 4.
-3. **Attach the pre-install script.** Still in the **Scripts** tool, on the
-   **Customer Scripts** side, add a **Pre-Install Script** and import
-   `Enable-WSL2-Features.ps1`. Customer and PMPC scripts live in separate
-   buckets, so adding yours does not replace or conflict with theirs.
-   Pre-install scripts are generally available — no preview feature required.
-   PMPC does not sign customer-supplied scripts; sign it yourself if your
-   environment enforces signature checks.
+3. *(Only if step 1 showed a disabled feature.)* **Check for an existing PMPC
+   script.** Some catalog apps ship with vendor-authored scripts that run
+   automatically. In the **Scripts** tool, use the
+   **`Customer Scripts | PMPC Scripts`** toggle to view them. You can read and
+   disable a PMPC script but **cannot edit** it (name, format, contents, and
+   arguments are locked). If PMPC's script already enables the features, you are
+   done here.
+4. *(Only if step 1 showed a disabled feature.)* **Attach the pre-install
+   script.** Still in the **Scripts** tool, on the **Customer Scripts** side, add
+   a **Pre-Install Script** and import `Enable-WSL2-Features.ps1`. Customer and
+   PMPC scripts live in separate buckets, so adding yours does not replace or
+   conflict with theirs. Pre-install scripts are generally available — no preview
+   feature required. PMPC does not sign customer-supplied scripts; sign it
+   yourself if your environment enforces signature checks.
 
    Optionally enable **"Don't attempt software update if the pre-script returns
    an exit code other than 0 or 3010"**. Both of this script's success codes are
    in that set, so the install still proceeds normally — but a genuine failure
-   (exit `1`) will then stop the WSL install rather than letting it continue
-   over a broken prerequisite. Without the checkbox, installation proceeds
-   regardless of the script's exit code.
-4. **Set the restart behaviour** on the deployment so the device restarts after
-   the features are enabled. See [The reboot problem](#the-reboot-problem) — do
-   not skip this.
+   (exit `1`) will then stop the WSL install rather than letting it continue over
+   a broken prerequisite. Without the checkbox, installation proceeds regardless
+   of the script's exit code.
+
+   Then set the deployment's **restart behaviour** so the device restarts after
+   the features are enabled — see [The reboot problem](#the-reboot-problem).
+
 5. **Let it deploy successfully.** A dependency parent must already exist and
    have deployed successfully; apps in Failed, Retrying, or Processing states
    cannot be selected, and neither can apps whose only assignments are Uninstall
@@ -91,7 +115,12 @@ and updates the WSL package on its own schedule.
 
 ## The reboot problem
 
-Enabling `VirtualMachinePlatform` requires a restart before WSL 2 actually
+**This section only applies when the optional features are not already enabled
+on your image.** Where they are pre-enabled — as on the Windows 365 gallery
+images checked so far — nothing needs enabling, no restart is pending, and the
+sequencing concern below disappears.
+
+Otherwise: enabling `VirtualMachinePlatform` requires a restart before WSL 2
 works, so the ordering of that restart relative to the Docker install matters.
 
 `Enable-WSL2-Features.ps1` exits `3010` when it has left a reboot pending, and
@@ -102,6 +131,16 @@ What it does *not* do by itself is guarantee that the device restarts before a
 dependent app installs — the app's overall result still comes from the catalog
 MSI, not from the pre-install script. Verify this behaves as expected in your
 environment rather than assuming it.
+
+## Keeping the script anyway
+
+Even where the features are pre-enabled, `Enable-WSL2-Features.ps1` is
+idempotent: it reads each feature's state, does nothing when they are already
+enabled, and exits `0` in a second or two. Attaching it costs almost nothing and
+insures against image drift — a new gallery image version, a switch to a custom
+image, or non-Windows-365 devices joining the same deployment later. Dropping it
+is reasonable for a homogeneous fleet on a known image; just re-check step 1 if
+the image ever changes.
 
 Mitigations, in order of preference:
 

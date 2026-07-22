@@ -32,10 +32,14 @@ No Linux distribution is installed by design — Docker Desktop provisions its o
 
 **If you deploy Docker Desktop with Patch My PC**, read
 **[PMPC-Cloud-Setup.md](PMPC-Cloud-Setup.md)**. The recommended route uses PMPC's
-own catalog app `Windows Subsystem for Linux (MSI-x64)` with
-`Enable-WSL2-Features.ps1` attached as a pre-install script, wired as a
-dependency of the Docker deployment. It needs no preview features and lets PMPC
-keep the WSL package updated.
+own catalog app `Windows Subsystem for Linux (MSI-x64)`, wired as a dependency of
+the Docker deployment. It needs no preview features and lets PMPC keep the WSL
+package updated.
+
+Check your image first: where the optional features are already enabled — as on
+the Windows 365 gallery images checked so far — the catalog app alone is enough
+and no script is needed. Where they are not, attach `Enable-WSL2-Features.ps1` as
+a pre-install script.
 
 **Otherwise**, package this folder as a standalone Intune Win32 app using
 `Install-WSL2.ps1`, as described below.
